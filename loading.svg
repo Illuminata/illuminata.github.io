@@ -1,0 +1,22 @@
+<svg width="64" height="64" version="1.1" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <style>
+        circle {
+            animation: pulse 2000ms linear 0ms infinite;
+            transform-origin: 50% 50%;
+        }
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(0%);
+            }
+            20% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                transform: scale(100%);
+            }
+        }
+    </style>
+    <circle cx="32" cy="32" r="31.535" fill="hsl(0deg, 0%, 86%)"/>
+</svg>
