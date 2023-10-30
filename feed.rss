@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <atom:link href="https://doomwave.com/feed.rss" rel="self" type="application/rss+xml"/>
+        <description>A faircamp-based music catalog</description>
+        
+        <language>en</language>
+        <lastBuildDate>Mon, 30 Oct 2023 20:02:26 +0000</lastBuildDate>
+        <link>https://doomwave.com/</link>
+        <title>Spiraling Out</title>
+        
+        <item>
+    <description>A release by Spiraling Out</description>
+    <guid>https://doomwave.com/becoming-you</guid>
+    <link>https://doomwave.com/becoming-you</link>
+    <title>Becoming You</title>
+</item>
+    </channel>
+</rss>
