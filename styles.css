@@ -10,6 +10,7 @@
     --cover-h: var(--link-h);
     --cover-l: 13%;
     --cover-s: calc(35% * (var(--tint-front) / 100));
+    --faint-l: 15%;
     --header-a: 0.8;
     --header-l: 0%;
     --header-link-l: 86%;
@@ -39,10 +40,12 @@ body, button, input { font-family: 'Barlow'; }
 :root {
     --color-background: hsl(var(--background-h), var(--background-s), var(--background-l));
 /*    --color-cover: hsl(var(--cover-h), var(--cover-s), var(--cover-l));*/
+    --color-faint: hsl(var(--text-h), var(--text-s), var(--faint-l));
     --color-link: hsl(var(--link-h), var(--link-s), var(--link-l));
     --color-link-hover: hsl(var(--link-h), var(--link-s), var(--link-hover-l));
     --color-muted: hsl(var(--muted-h), var(--muted-s), var(--muted-l));
     --color-text: hsl(var(--text-h), var(--text-s), var(--text-l));
+    --color-text-dimmed: hsla(var(--text-h), var(--text-s), var(--text-l), .5);
     --clearly-smaller: .83rem;
     --subtly-larger: 1.14rem;
     --boldly-larger: 1.17rem;
@@ -122,12 +125,33 @@ body {
     display: block;
     margin-bottom: .5rem;
 }
-.download_formats { margin-left: .1rem; }
-.download_hints > small { display: block; }
-.download_hints > small:not(:first-child) { margin-top: .8rem; }
+.download_entry { display: flex; }
+.download_formats {
+    display: flex;
+    flex-direction: column;
+    row-gap: .1rem;
+}
+.download_group { margin: 1.2rem 0; }
+.download_hints {
+    display: flex;
+    flex-direction: column;
+    font-size: var(--clearly-smaller);
+    margin: 2rem 0;
+    row-gap: .8rem;
+}
+.download_hints span {
+    color: var(--color-text-dimmed);  
+}
 .download_options div { margin-bottom: .5rem; }
+.download_underline {
+    border-bottom: 1px solid var(--color-faint);
+    bottom: 0.1rem;
+    flex-grow: 1;
+    margin: 0 .2rem;
+    position: relative;
+}
 .duration {
-    color: hsla(var(--text-h), var(--text-s), var(--text-l), .5);
+    color: var(--color-text-dimmed);
     margin-left: .2rem;
     user-select: none;
     white-space: nowrap;
@@ -349,7 +373,7 @@ svg * { pointer-events: none; /* prevent click events on sub elements of an svg 
 .track.active .track_controls.inner,
 .track:hover .track_controls.inner { display: flex; }
 .track_download_option { position: relative; }
-.track_number { color: hsla(var(--text-h), var(--text-s), var(--text-l), .5); }
+.track_number { color: var(--color-text-dimmed); }
 .track_controls,
 .track_number { padding-right: .5rem; }
 .track_controls.outer,
