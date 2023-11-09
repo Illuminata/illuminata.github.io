@@ -4,7 +4,7 @@
     --tint-front: 0;
     
     --background-h: var(--link-h);
-    --background-l: 10%;
+    --background-l: 0%;
     --background-s: calc(41% * (var(--tint-back) / 100));
     --cover-border-radius: 0;
     --cover-h: var(--link-h);
@@ -12,10 +12,10 @@
     --cover-s: calc(35% * (var(--tint-front) / 100));
     --faint-l: 15%;
     --header-a: 0.8;
-    --header-l: 10%;
+    --header-l: 0%;
     --header-link-l: 86%;
     --header-shadow-a: 0;
-    --header-text-l: 72%;
+    --header-text-l: 68%;
     --link-l: 68%;
     --link-s: 62%;
     --link-hover-l: 82%;
@@ -24,9 +24,9 @@
     --muted-s: calc(35% * (var(--tint-front) / 100));
     --nav-s: calc(17% * (var(--tint-front) / 100));
     --overlay-a: 90;
-    --release-additional-a: 0.02;
+    --release-additional-a: 0.06;
     --text-h: 0deg;
-    --text-l: 86%;
+    --text-l: 72%;
     --text-s: calc(94% * (var(--tint-front) / 100));
 }
 @font-face {
