@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>d҉o҉o҉m҉</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; background: #000; overflow: hidden;
+      font-family: 'Courier New', monospace;
+    }
+    .ascii-container {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: #000; cursor: pointer;
+    }
+    .ascii-content {
+      color: #00ff00; white-space: pre; font-family: inherit;
+      /* Fallback for older Safari versions that don't support clamp() */
+      font-size: 8px;
+      font-size: clamp(6px, 1vmin, 12px); 
+      line-height: 1;
+      width: 100%; height: 100%; display: block;
+      opacity: 0; transition: opacity 0.2s ease;
+    }
+    .ascii-content.ready {
+      opacity: 1;
+    }
+    .hidden-video { display: none; }
+    
+    /* Respect user's motion preferences */
+    @media (prefers-reduced-motion: reduce) {
+      .ascii-content {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Added playsinline attribute for iOS Safari compatibility -->
+  <video id="video" class="hidden-video" muted loop autoplay playsinline crossorigin="anonymous">
+    <source src="DSC07338_DxO-moshed-04-18-18-14-30-943.mp4" type="video/mp4">
+  </video>
+
+  <div class="ascii-container" id="asciiContainer">
+    <div class="ascii-content" id="ascii"></div>
+  </div>
+
+  <script>
+    // Debug info for iOS Safari troubleshooting
+    const debugInfo = {
+      canAutoplay: false,
+      lowPowerMode: false,
+      canvasSupport: true,
+      clampSupport: CSS && CSS.supports ? CSS.supports('font-size', 'clamp(1rem, 2vw, 2rem)') : false,
+      userAgent: navigator.userAgent,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      isiOS: /iPad|iPhone|iPod/.test(navigator.userAgent)
+    };
+
+    let playing = true, animationId;
+    let lastFrameTime = 0;
+    let frameThrottled = false;
+    let canvasErrorCount = 0;
+
+    const chars = ' .:-=+*#%@';
+    const video = document.getElementById('video');
+    const ascii = document.getElementById('ascii');
+    const asciiContainer = document.getElementById('asciiContainer');
+
+    function getDimensions() {
+      const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
+      const charWidth = fontSize * 0.6, charHeight = fontSize;
+      let width = Math.min(200, Math.max(80, Math.floor(window.innerWidth / charWidth)));
+      let height = Math.min(100, Math.max(40, Math.floor(window.innerHeight / charHeight)));
+      
+      // iOS Safari canvas memory limit check (16.7M pixels max)
+      const maxPixels = 16777216;
+      if (width * height > maxPixels) {
+        const scalar = Math.sqrt(maxPixels) / Math.sqrt(width * height);
+        width = Math.floor(width * scalar);
+        height = Math.floor(height * scalar);
+      }
+      
+      return { width, height };
+    }
+
+    function generateASCII() {
+      const dim = getDimensions();
+      
+      // Try video processing if available and not too many errors
+      if (video.readyState >= 2 && video.videoWidth > 0 && canvasErrorCount < 3) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = dim.width; 
+          canvas.height = dim.height;
+          const ctx = canvas.getContext('2d');
+          
+          // Check if canvas is valid after creation
+          if (!ctx || canvas.width === 0 || canvas.height === 0) {
+            throw new Error('Canvas creation failed');
+          }
+          
+          ctx.drawImage(video, 0, 0, dim.width, dim.height);
+          
+          // Additional check for iOS Safari video frame issues
+          const testPixel = ctx.getImageData(0, 0, 1, 1).data;
+          if (testPixel[0] === 0 && testPixel[1] === 0 && testPixel[2] === 0 && testPixel[3] === 0) {
+            throw new Error('Video frame not ready');
+          }
+          
+          const data = ctx.getImageData(0, 0, dim.width, dim.height).data;
+          let out = '';
+          for (let y = 0; y < dim.height; y++) {
+            for (let x = 0; x < dim.width; x++) {
+              const i = (y * dim.width + x) * 4;
+              const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+              const enhanced = Math.min(255, Math.max(0, (gray - 128) * 1.3 + 128));
+              const idx = Math.floor((enhanced / 255) * (chars.length - 1));
+              out += chars[idx] || ' ';
+            }
+            out += '\n';
+          }
+          
+          // Reset error count on success
+          canvasErrorCount = 0;
+          return out;
+        } catch (error) {
+          canvasErrorCount++;
+          console.warn('Canvas operation failed, falling back to pattern:', error);
+        }
+      }
+      
+      // Fallback animated pattern
+      const t = Date.now() * 0.001;
+      let out = '';
+      const { width, height } = dim;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const wave = Math.sin(x * 0.05 + t * 2)
+                     * Math.cos(y * 0.08 + t * 1.5)
+                     * Math.sin((x + y) * 0.03 + t * 0.8);
+          const idx = Math.floor((wave + 1) / 2 * (chars.length - 1));
+          out += chars[idx] || ' ';
+        }
+        out += '\n';
+      }
+      return out;
+    }
+
+    function animate(timestamp) {
+      if (playing) {
+        // Detect if we're being throttled (iOS Low Power Mode = 30fps instead of 60fps)
+        if (timestamp && lastFrameTime) {
+          const frameDelta = timestamp - lastFrameTime;
+          if (frameDelta > 25 && frameDelta < 40) {
+            frameThrottled = true;
+            debugInfo.lowPowerMode = true;
+          }
+        }
+        
+        ascii.textContent = generateASCII();
+        ascii.classList.add('ready');
+        lastFrameTime = timestamp;
+      }
+      animationId = requestAnimationFrame(animate);
+    }
+
+    function toggleAnimation() {
+      playing = !playing;
+      if (playing) {
+        // Enhanced video play for iOS Safari
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            debugInfo.canAutoplay = true;
+          }).catch((error) => {
+            console.warn('Video play failed:', error);
+            debugInfo.canAutoplay = false;
+          });
+        }
+        asciiContainer.style.opacity = '1';
+      } else {
+        video.pause();
+        asciiContainer.style.opacity = '0.7';
+      }
+    }
+
+    function init() {
+      // Log debug info for troubleshooting
+      console.log('iOS Safari Debug Info:', debugInfo);
+      
+      asciiContainer.addEventListener('click', toggleAnimation);
+      
+      window.addEventListener('resize', () => {
+        if (playing) {
+          // Debounce resize to prevent excessive canvas operations
+          clearTimeout(window.resizeTimeout);
+          window.resizeTimeout = setTimeout(() => {
+            ascii.textContent = generateASCII();
+          }, 100);
+        }
+      });
+      
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          cancelAnimationFrame(animationId);
+        } else {
+          animate();
+        }
+      });
+      
+      // Enhanced video initialization for iOS Safari
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          debugInfo.canAutoplay = true;
+        }).catch((error) => {
+          console.warn('Initial video play failed:', error);
+          debugInfo.canAutoplay = false;
+        });
+      }
+      
+      animate();
+    }
+
+    // Wait for DOM and potential video metadata
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
