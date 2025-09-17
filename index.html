@@ -17,7 +17,7 @@
     .ascii-content {
       color: #00ff00; white-space: pre; font-family: inherit;
       /* Responsive font sizing for full coverage */
-      font-size: clamp(6px, 1vmin, 12px); 
+      font-size: clamp(6px, 1vmin, 12px);
       line-height: 1;
       /* Fill entire viewport */
       width: 100%; height: 100%; display: block;
@@ -37,7 +37,7 @@
       opacity: 1;
     }
     .hidden-video { display: none; }
-    
+
     /* Respect user's motion preferences */
     @media (prefers-reduced-motion: reduce) {
       .ascii-content {
@@ -73,10 +73,9 @@
     let lastFrameTime = 0;
     let frameThrottled = false;
     let canvasErrorCount = 0;
-    
+
     // Ping-pong playback variables
     let playDirection = 1; // 1 for forward, -1 for reverse
-    let lastPlaybackTime = 0;
     let videoDuration = 0;
     let pingPongEnabled = true;
 
@@ -85,58 +84,7 @@
     const ascii = document.getElementById('ascii');
     const asciiContainer = document.getElementById('asciiContainer');
 
-    function setupPingPongPlayback() {
-      video.addEventListener('loadedmetadata', () => {
-        videoDuration = video.duration;
-        console.log('Video duration:', videoDuration);
-      });
-
-      video.addEventListener('timeupdate', () => {
-        if (!pingPongEnabled || !playing) return;
-        
-        const currentTime = video.currentTime;
-        
-        // Check if we've reached the end (forward direction)
-        if (playDirection === 1 && currentTime >= videoDuration - 0.1) {
-          playDirection = -1;
-          video.playbackRate = -1;
-          console.log('Switching to reverse playback');
-        }
-        
-        // Check if we've reached the start (reverse direction)
-        else if (playDirection === -1 && currentTime <= 0.1) {
-          playDirection = 1;
-          video.playbackRate = 1;
-          console.log('Switching to forward playback');
-        }
-        
-        lastPlaybackTime = currentTime;
-      });
-
-      // Handle ended event as fallback for browsers that don't support negative playbackRate
-      video.addEventListener('ended', () => {
-        if (!pingPongEnabled) {
-          video.currentTime = 0;
-          video.play();
-          return;
-        }
-        
-        if (playDirection === 1) {
-          // We reached the end, switch to reverse
-          playDirection = -1;
-          // For browsers that don't support negative playbackRate, manually step backwards
-          if (!supportsPingPong()) {
-            startManualReverse();
-          } else {
-            video.playbackRate = -1;
-            video.play();
-          }
-        }
-      });
-    }
-
     function supportsPingPong() {
-      // Test if browser supports negative playbackRate
       try {
         video.playbackRate = -1;
         return video.playbackRate === -1;
@@ -148,89 +96,94 @@
     }
 
     function startManualReverse() {
-      // Manual reverse playback for browsers that don't support negative playbackRate
       const reverseInterval = setInterval(() => {
         if (!playing || playDirection === 1) {
           clearInterval(reverseInterval);
           return;
         }
-        
-        video.currentTime = Math.max(0, video.currentTime - 0.033); // ~30fps reverse
-        
+        video.currentTime = Math.max(0, video.currentTime - 0.033);
         if (video.currentTime <= 0) {
           clearInterval(reverseInterval);
           playDirection = 1;
           video.playbackRate = 1;
           video.play();
-          console.log('Manual reverse complete, switching to forward');
         }
-      }, 33); // ~30fps
+      }, 33);
+    }
+
+    function setupPingPongPlayback() {
+      video.addEventListener('loadedmetadata', () => {
+        videoDuration = video.duration;
+        console.log('Video duration:', videoDuration);
+      });
+
+      video.addEventListener('timeupdate', () => {
+        if (!pingPongEnabled || !playing) return;
+        const currentTime = video.currentTime;
+
+        if (playDirection === 1 && currentTime >= videoDuration - 0.1) {
+          playDirection = -1;
+          if (supportsPingPong()) {
+            video.playbackRate = -1;
+          } else {
+            startManualReverse();
+          }
+        }
+        else if (playDirection === -1 && currentTime <= 0.1) {
+          playDirection = 1;
+          video.playbackRate = 1;
+          video.play();
+        }
+      });
+
+      video.addEventListener('ended', () => {
+        if (!pingPongEnabled) {
+          video.currentTime = 0;
+          video.play();
+          return;
+        }
+        if (playDirection === 1) {
+          playDirection = -1;
+          if (supportsPingPong()) {
+            video.playbackRate = -1;
+            video.play();
+          } else {
+            startManualReverse();
+          }
+        }
+      });
     }
 
     function getDimensions() {
       const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
-      
-      // Use actual character measurements for precise fitting
-      const charWidth = fontSize * 0.6;  // Monospace character width
-      const charHeight = fontSize;       // Line height
-      
-      // Calculate exact grid dimensions to fill entire viewport
+      const charWidth = fontSize * 0.6;
+      const charHeight = fontSize;
       const width = Math.ceil(window.innerWidth / charWidth);
       const height = Math.ceil(window.innerHeight / charHeight);
-      
-      // Apply reasonable limits to prevent memory issues
       const maxWidth = Math.min(width, 400);
       const maxHeight = Math.min(height, 200);
-      
-      // iOS Safari canvas memory limit check (16.7M pixels max)
       const maxPixels = 16777216;
       let finalWidth = maxWidth;
       let finalHeight = maxHeight;
-      
       if (finalWidth * finalHeight > maxPixels) {
         const scalar = Math.sqrt(maxPixels) / Math.sqrt(finalWidth * finalHeight);
         finalWidth = Math.floor(finalWidth * scalar);
         finalHeight = Math.floor(finalHeight * scalar);
       }
-      
-      // Ensure we have enough characters to fill the screen
-      finalWidth = Math.max(finalWidth, Math.ceil(window.innerWidth / charWidth));
-      finalHeight = Math.max(finalHeight, Math.ceil(window.innerHeight / charHeight));
-      
-      return { 
-        width: finalWidth, 
-        height: finalHeight, 
-        charWidth, 
-        charHeight,
-        actualWidth: finalWidth * charWidth,
-        actualHeight: finalHeight * charHeight
-      };
+      finalWidth = Math.max(finalWidth, width);
+      finalHeight = Math.max(finalHeight, height);
+      return { width: finalWidth, height: finalHeight, charWidth, charHeight };
     }
 
     function generateASCII() {
       const dim = getDimensions();
-      
-      // Try video processing if available and not too many errors
       if (video.readyState >= 2 && video.videoWidth > 0 && canvasErrorCount < 3) {
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = dim.width; 
+          canvas.width = dim.width;
           canvas.height = dim.height;
-          const ctx = canvas.getContext('2d');
-          
-          // Check if canvas is valid after creation
-          if (!ctx || canvas.width === 0 || canvas.height === 0) {
-            throw new Error('Canvas creation failed');
-          }
-          
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
           ctx.drawImage(video, 0, 0, dim.width, dim.height);
-          
-          // Additional check for iOS Safari video frame issues
-          const testPixel = ctx.getImageData(0, 0, 1, 1).data;
-          if (testPixel[0] === 0 && testPixel[1] === 0 && testPixel[2] === 0 && testPixel[3] === 0) {
-            throw new Error('Video frame not ready');
-          }
-          
           const data = ctx.getImageData(0, 0, dim.width, dim.height).data;
           let out = '';
           for (let y = 0; y < dim.height; y++) {
@@ -241,10 +194,8 @@
               const idx = Math.floor((enhanced / 255) * (chars.length - 1));
               out += chars[idx] || ' ';
             }
-            if (y < dim.height - 1) out += '\n'; // Don't add newline after last row
+            if (y < dim.height - 1) out += '\n';
           }
-          
-          // Reset error count on success
           canvasErrorCount = 0;
           return out;
         } catch (error) {
@@ -252,8 +203,6 @@
           console.warn('Canvas operation failed, falling back to pattern:', error);
         }
       }
-      
-      // Fallback animated pattern that fills entire viewport
       const t = Date.now() * 0.001;
       let out = '';
       const { width, height } = dim;
@@ -265,14 +214,13 @@
           const idx = Math.floor((wave + 1) / 2 * (chars.length - 1));
           out += chars[idx] || ' ';
         }
-        if (y < height - 1) out += '\n'; // Don't add newline after last row
+        if (y < height - 1) out += '\n';
       }
       return out;
     }
 
     function animate(timestamp) {
       if (playing) {
-        // Detect if we're being throttled (iOS Low Power Mode = 30fps instead of 60fps)
         if (timestamp && lastFrameTime) {
           const frameDelta = timestamp - lastFrameTime;
           if (frameDelta > 25 && frameDelta < 40) {
@@ -280,7 +228,6 @@
             debugInfo.lowPowerMode = true;
           }
         }
-        
         ascii.textContent = generateASCII();
         ascii.classList.add('ready');
         lastFrameTime = timestamp;
@@ -291,19 +238,12 @@
     function toggleAnimation() {
       playing = !playing;
       if (playing) {
-        // Enhanced video play for iOS Safari with ping-pong support
         const playPromise = video.play();
         if (playPromise !== undefined) {
           playPromise.then(() => {
             debugInfo.canAutoplay = true;
-            // Restore correct playback rate if it was changed
-            if (playDirection === 1) {
-              video.playbackRate = 1;
-            } else {
-              video.playbackRate = supportsPingPong() ? -1 : 1;
-            }
+            video.playbackRate = playDirection === 1 ? 1 : (supportsPingPong() ? -1 : 1);
           }).catch((error) => {
-            console.warn('Video play failed:', error);
             debugInfo.canAutoplay = false;
           });
         }
@@ -315,42 +255,30 @@
     }
 
     function init() {
-      // Log debug info for troubleshooting
       console.log('Ping-pong Video Debug Info:', debugInfo);
       console.log('Browser supports negative playbackRate:', supportsPingPong());
-      
-      // Setup ping-pong playback
       setupPingPongPlayback();
-      
       asciiContainer.addEventListener('click', toggleAnimation);
-      
-      // Add keyboard shortcut to toggle ping-pong mode
       document.addEventListener('keydown', (e) => {
         if (e.key === 'p' || e.key === 'P') {
           pingPongEnabled = !pingPongEnabled;
           if (!pingPongEnabled) {
-            // Reset to normal forward playback
             playDirection = 1;
             video.playbackRate = 1;
           }
-          console.log('Ping-pong mode:', pingPongEnabled ? 'enabled' : 'disabled');
+          console.log('Ping-pong mode:', pingPongEnabled);
         }
       });
-      
       window.addEventListener('resize', () => {
-        // Update debug info on resize
         debugInfo.viewport = { width: window.innerWidth, height: window.innerHeight };
         debugInfo.aspectRatio = window.innerWidth / window.innerHeight;
-        
         if (playing) {
-          // Debounce resize to prevent excessive canvas operations
           clearTimeout(window.resizeTimeout);
           window.resizeTimeout = setTimeout(() => {
             ascii.textContent = generateASCII();
           }, 100);
         }
       });
-      
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
           cancelAnimationFrame(animationId);
@@ -358,22 +286,13 @@
           animate();
         }
       });
-      
-      // Enhanced video initialization for iOS Safari
       const playPromise = video.play();
       if (playPromise !== undefined) {
-        playPromise.then(() => {
-          debugInfo.canAutoplay = true;
-        }).catch((error) => {
-          console.warn('Initial video play failed:', error);
-          debugInfo.canAutoplay = false;
-        });
+        playPromise.catch(() => { debugInfo.canAutoplay = false; });
       }
-      
       animate();
     }
 
-    // Wait for DOM and potential video metadata
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
     } else {
