@@ -1,3 +1,4 @@
+xml
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,288 +17,131 @@
     }
     .ascii-content {
       color: #00ff00; white-space: pre; font-family: inherit;
-      /* Responsive font sizing for full coverage */
       font-size: clamp(6px, 1vmin, 12px);
       line-height: 1;
-      /* Fill entire viewport */
       width: 100%; height: 100%; display: block;
       opacity: 0; transition: opacity 0.2s ease;
-      /* Left-aligned to fill from top-left */
       text-align: left;
-      /* Remove any spacing that could create gaps */
       letter-spacing: 0;
-      margin: 0;
-      padding: 0;
-      /* Ensure content starts at very top-left */
-      position: absolute;
-      top: 0;
-      left: 0;
+      margin: 0; padding: 0;
+      position: absolute; top: 0; left: 0;
     }
     .ascii-content.ready {
       opacity: 1;
     }
     .hidden-video { display: none; }
-
-    /* Respect user's motion preferences */
     @media (prefers-reduced-motion: reduce) {
-      .ascii-content {
-        transition: none;
-      }
+      .ascii-content { transition: none; }
     }
   </style>
 </head>
 <body>
-  <!-- Removed loop attribute to manually control ping-pong playback -->
-  <video id="video" class="hidden-video" muted autoplay playsinline crossorigin="anonymous">
-    <source src="DSC07338_DxO-moshed-04-18-18-14-30-943.mp4" type="video/mp4">
-  </video>
-
   <div class="ascii-container" id="asciiContainer">
     <div class="ascii-content" id="ascii"></div>
   </div>
 
   <script>
-    // Debug info for iOS Safari troubleshooting
-    const debugInfo = {
-      canAutoplay: false,
-      lowPowerMode: false,
-      canvasSupport: true,
-      clampSupport: CSS && CSS.supports ? CSS.supports('font-size', 'clamp(1rem, 2vw, 2rem)') : false,
-      userAgent: navigator.userAgent,
-      viewport: { width: window.innerWidth, height: window.innerHeight },
-      aspectRatio: window.innerWidth / window.innerHeight,
-      isiOS: /iPad|iPhone|iPod/.test(navigator.userAgent)
-    };
+    // Create hidden video element for frame source
+    const video = document.createElement('video');
+    video.src = 'DSC07338_DxO-moshed-04-18-18-14-30-943.mp4';
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+    video.preload = 'auto';
+    video.style.display = 'none';
+    document.body.appendChild(video);
 
-    let playing = true, animationId;
-    let lastFrameTime = 0;
-    let frameThrottled = false;
-    let canvasErrorCount = 0;
-
-    // Ping-pong playback variables
-    let playDirection = 1; // 1 for forward, -1 for reverse
-    let videoDuration = 0;
-    let pingPongEnabled = true;
-
-    const chars = ' .:-=+*#%@';
-    const video = document.getElementById('video');
     const ascii = document.getElementById('ascii');
-    const asciiContainer = document.getElementById('asciiContainer');
+    const chars = ' .:-=+*#%@';
 
-    function supportsPingPong() {
-      try {
-        video.playbackRate = -1;
-        return video.playbackRate === -1;
-      } catch (e) {
-        return false;
-      } finally {
-        video.playbackRate = 1;
-      }
-    }
+    // Ping-pong control
+    let direction = 1;           // +1 forward, -1 backward
+    const fps = 30;              // target frame rate
+    let frameDuration = 0;       // computed after metadata load
+    let lastTime = 0;
 
-    function startManualReverse() {
-      const reverseInterval = setInterval(() => {
-        if (!playing || playDirection === 1) {
-          clearInterval(reverseInterval);
-          return;
-        }
-        video.currentTime = Math.max(0, video.currentTime - 0.033);
-        if (video.currentTime <= 0) {
-          clearInterval(reverseInterval);
-          playDirection = 1;
-          video.playbackRate = 1;
-          video.play();
-        }
-      }, 33);
-    }
-
-    function setupPingPongPlayback() {
-      video.addEventListener('loadedmetadata', () => {
-        videoDuration = video.duration;
-        console.log('Video duration:', videoDuration);
-      });
-
-      video.addEventListener('timeupdate', () => {
-        if (!pingPongEnabled || !playing) return;
-        const currentTime = video.currentTime;
-
-        if (playDirection === 1 && currentTime >= videoDuration - 0.1) {
-          playDirection = -1;
-          if (supportsPingPong()) {
-            video.playbackRate = -1;
-          } else {
-            startManualReverse();
-          }
-        }
-        else if (playDirection === -1 && currentTime <= 0.1) {
-          playDirection = 1;
-          video.playbackRate = 1;
-          video.play();
-        }
-      });
-
-      video.addEventListener('ended', () => {
-        if (!pingPongEnabled) {
-          video.currentTime = 0;
-          video.play();
-          return;
-        }
-        if (playDirection === 1) {
-          playDirection = -1;
-          if (supportsPingPong()) {
-            video.playbackRate = -1;
-            video.play();
-          } else {
-            startManualReverse();
-          }
-        }
-      });
-    }
-
+    // Compute grid dimensions
     function getDimensions() {
       const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
       const charWidth = fontSize * 0.6;
       const charHeight = fontSize;
       const width = Math.ceil(window.innerWidth / charWidth);
       const height = Math.ceil(window.innerHeight / charHeight);
-      const maxWidth = Math.min(width, 400);
-      const maxHeight = Math.min(height, 200);
-      const maxPixels = 16777216;
-      let finalWidth = maxWidth;
-      let finalHeight = maxHeight;
-      if (finalWidth * finalHeight > maxPixels) {
-        const scalar = Math.sqrt(maxPixels) / Math.sqrt(finalWidth * finalHeight);
-        finalWidth = Math.floor(finalWidth * scalar);
-        finalHeight = Math.floor(finalHeight * scalar);
-      }
-      finalWidth = Math.max(finalWidth, width);
-      finalHeight = Math.max(finalHeight, height);
-      return { width: finalWidth, height: finalHeight, charWidth, charHeight };
+      return { width, height };
     }
 
-    function generateASCII() {
+    // Render current video frame as ASCII
+    function renderASCII() {
       const dim = getDimensions();
-      if (video.readyState >= 2 && video.videoWidth > 0 && canvasErrorCount < 3) {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = dim.width;
-          canvas.height = dim.height;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          ctx.drawImage(video, 0, 0, dim.width, dim.height);
-          const data = ctx.getImageData(0, 0, dim.width, dim.height).data;
-          let out = '';
-          for (let y = 0; y < dim.height; y++) {
-            for (let x = 0; x < dim.width; x++) {
-              const i = (y * dim.width + x) * 4;
-              const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-              const enhanced = Math.min(255, Math.max(0, (gray - 128) * 1.3 + 128));
-              const idx = Math.floor((enhanced / 255) * (chars.length - 1));
-              out += chars[idx] || ' ';
-            }
-            if (y < dim.height - 1) out += '\n';
-          }
-          canvasErrorCount = 0;
-          return out;
-        } catch (error) {
-          canvasErrorCount++;
-          console.warn('Canvas operation failed, falling back to pattern:', error);
-        }
-      }
-      const t = Date.now() * 0.001;
+      const canvas = document.createElement('canvas');
+      canvas.width = dim.width;
+      canvas.height = dim.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, dim.width, dim.height);
+      const data = ctx.getImageData(0, 0, dim.width, dim.height).data;
       let out = '';
-      const { width, height } = dim;
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const wave = Math.sin(x * 0.05 + t * 2)
-                     * Math.cos(y * 0.08 + t * 1.5)
-                     * Math.sin((x + y) * 0.03 + t * 0.8);
-          const idx = Math.floor((wave + 1) / 2 * (chars.length - 1));
+      for (let y = 0; y < dim.height; y++) {
+        for (let x = 0; x < dim.width; x++) {
+          const i = (y * dim.width + x) * 4;
+          const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+          const enhanced = Math.min(255, Math.max(0, (gray - 128) * 1.3 + 128));
+          const idx = Math.floor((enhanced / 255) * (chars.length - 1));
           out += chars[idx] || ' ';
         }
-        if (y < height - 1) out += '\n';
+        if (y < dim.height - 1) out += '\n';
       }
-      return out;
+      ascii.textContent = out;
+      ascii.classList.add('ready');
     }
 
-    function animate(timestamp) {
-      if (playing) {
-        if (timestamp && lastFrameTime) {
-          const frameDelta = timestamp - lastFrameTime;
-          if (frameDelta > 25 && frameDelta < 40) {
-            frameThrottled = true;
-            debugInfo.lowPowerMode = true;
-          }
+    // Step through video frames manually for ping-pong
+    function step(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const delta = (timestamp - lastTime) / 1000;
+      if (delta >= frameDuration) {
+        let t = video.currentTime + direction * frameDuration;
+        if (t >= video.duration) {
+          t = video.duration;
+          direction = -1;
+        } else if (t <= 0) {
+          t = 0;
+          direction = 1;
         }
-        ascii.textContent = generateASCII();
-        ascii.classList.add('ready');
-        lastFrameTime = timestamp;
+        video.currentTime = t;
+        renderASCII();
+        lastTime = timestamp;
       }
-      animationId = requestAnimationFrame(animate);
+      requestAnimationFrame(step);
     }
 
-    function toggleAnimation() {
+    // Initialize on metadata load
+    video.addEventListener('loadedmetadata', () => {
+      frameDuration = 1 / fps;
+      video.currentTime = 0;
+      video.pause();
+      requestAnimationFrame(step);
+    });
+
+    // Toggle play/pause on click
+    let playing = true;
+    const asciiContainer = document.getElementById('asciiContainer');
+    asciiContainer.addEventListener('click', () => {
       playing = !playing;
       if (playing) {
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            debugInfo.canAutoplay = true;
-            video.playbackRate = playDirection === 1 ? 1 : (supportsPingPong() ? -1 : 1);
-          }).catch((error) => {
-            debugInfo.canAutoplay = false;
-          });
-        }
+        requestAnimationFrame(step);
         asciiContainer.style.opacity = '1';
       } else {
-        video.pause();
         asciiContainer.style.opacity = '0.7';
       }
-    }
+    });
 
-    function init() {
-      console.log('Ping-pong Video Debug Info:', debugInfo);
-      console.log('Browser supports negative playbackRate:', supportsPingPong());
-      setupPingPongPlayback();
-      asciiContainer.addEventListener('click', toggleAnimation);
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'p' || e.key === 'P') {
-          pingPongEnabled = !pingPongEnabled;
-          if (!pingPongEnabled) {
-            playDirection = 1;
-            video.playbackRate = 1;
-          }
-          console.log('Ping-pong mode:', pingPongEnabled);
-        }
-      });
-      window.addEventListener('resize', () => {
-        debugInfo.viewport = { width: window.innerWidth, height: window.innerHeight };
-        debugInfo.aspectRatio = window.innerWidth / window.innerHeight;
-        if (playing) {
-          clearTimeout(window.resizeTimeout);
-          window.resizeTimeout = setTimeout(() => {
-            ascii.textContent = generateASCII();
-          }, 100);
-        }
-      });
-      document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-          cancelAnimationFrame(animationId);
-        } else {
-          animate();
-        }
-      });
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => { debugInfo.canAutoplay = false; });
-      }
-      animate();
-    }
+    // Re-render on resize
+    window.addEventListener('resize', () => {
+      if (playing) renderASCII();
+    });
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
-    } else {
-      init();
-    }
+    // Start loading
+    video.load();
   </script>
 </body>
 </html>
