@@ -1,140 +1,112 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script>
-  const ascii = document.getElementById('ascii');
-  const loading = document.getElementById('loading');
-  const container = document.getElementById('asciiContainer');
-  
-  const CHARS = ' .:-=+*#%@';
-  let direction = 1;
-  const FPS = 30;
-  const frameDuration = 1000 / FPS;  // ms per frame
-  let lastTime = 0;
-  let playing = true;
-  let frames = [];
-  let frameCache = new Map();
-  let videoTime = 0;  // FIXED: Track position in seconds
-  
-  function computeDimensions() {
-    const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
-    const charWidth = fontSize * 0.6;
-    const charHeight = fontSize;
-    return { 
-      width: Math.ceil(window.innerWidth / charWidth), 
-      height: Math.ceil(window.innerHeight / charHeight) 
-    };
-  }
-  
-  function resampleFrame(baseFrame, targetW, targetH) {
-    const key = `${targetW}x${targetH}`;
-    if (frameCache.has(key)) return frameCache.get(key);
+  // Wait for DOM to load
+  document.addEventListener('DOMContentLoaded', async function() {
+    const ascii = document.getElementById('ascii');
+    const loading = document.getElementById('loading');
+    const container = document.getElementById('asciiContainer');
     
-    const baseLines = baseFrame.data.split('\n');
-    const baseW = baseFrame.width;
-    const baseH = baseFrame.height;
+    const CHARS = ' .:-=+*#%@';
+    let direction = 1;
+    const FPS = 30;
+    const frameDuration = 1000 / FPS;
+    let lastTime = 0;
+    let playing = true;
+    let frames = [];
+    let frameCache = new Map();
+    let videoTime = 0;
     
-    const grid = [];
-    for (let y = 0; y < targetH; y++) {
-      const row = [];
-      for (let x = 0; x < targetW; x++) {
-        const srcX = Math.floor(x * baseW / targetW);
-        const srcY = Math.floor(y * baseH / targetH);
-        const charIdx = CHARS.indexOf(baseLines[srcY]?.[srcX] || ' ');
-        row.push(CHARS[charIdx]);
-      }
-      grid.push(row.join(''));
-    }
-    const result = { data: grid.join('\n') };
-    frameCache.set(key, result);
-    return result;
-  }
-  
-  function renderFrame(frameIndex) {
-    if (!frames[frameIndex]) return;
-    const dim = computeDimensions();
-    const frame = resampleFrame(frames[frameIndex], dim.width, dim.height);
-    ascii.textContent = frame.data;
-    ascii.classList.add('ready');
-  }
-  
-  async function loadFrames(jsonUrl) {
-    try {
-      loading.textContent = 'Fetching frames...';
-      const response = await fetch(jsonUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      
-      const buffer = await response.arrayBuffer();
-      loading.textContent = 'Decompressing...';
-      
-      const decompressed = pako.inflate(new Uint8Array(buffer));
-      const json = new TextDecoder().decode(decompressed);
-      frames = JSON.parse(json);
-      
-      loading.textContent = `Loaded ${frames.length} frames`;
-      renderFrame(0);
-      requestAnimationFrame(step);  // SINGLE call
-      
-      setTimeout(() => loading.remove(), 1500);
-    } catch (e) {
-      loading.innerHTML = `Error: ${e.message}`;
-      console.error(e);
-    }
-  }
-  
-  // FIXED SINGLE STEP FUNCTION
-  function step(timestamp) {
-    if (!playing || frames.length === 0) {
-      requestAnimationFrame(step);
-      return;
+    function computeDimensions() {
+      const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
+      const charWidth = fontSize * 0.6;
+      const charHeight = fontSize;
+      return { 
+        width: Math.ceil(window.innerWidth / charWidth), 
+        height: Math.ceil(window.innerHeight / charHeight) 
+      };
     }
     
-    if (!lastTime) {
-      lastTime = timestamp;
-      requestAnimationFrame(step);
-      return;
-    }
-    
-    const deltaTime = timestamp - lastTime;
-    if (deltaTime >= frameDuration) {
-      // Advance video time (in seconds)
-      videoTime += direction * (frameDuration / 1000);
+    function resampleFrame(baseFrame, targetW, targetH) {
+      const key = `${targetW}x${targetH}`;
+      if (frameCache.has(key)) return frameCache.get(key);
       
-      // Ping-pong logic
-      const duration = frames[frames.length-1].timestamp;
-      if (videoTime >= duration) {
-        videoTime = duration;
-        direction = -1;
-      } else if (videoTime <= 0) {
-        videoTime = 0;
-        direction = 1;
-      }
+      const baseLines = baseFrame.data.split('\n');
+      const baseW = baseFrame.width;
+      const baseH = baseFrame.height;
       
-      // Find frame by timestamp
-      let frameIndex = 0;
-      for (let i = 0; i < frames.length; i++) {
-        if (frames[i].timestamp <= videoTime) {
-          frameIndex = i;
-        } else {
-          break;
+      const grid = [];
+      for (let y = 0; y < targetH; y++) {
+        const row = [];
+        for (let x = 0; x < targetW; x++) {
+          const srcX = Math.floor(x * baseW / targetW);
+          const srcY = Math.floor(y * baseH / targetH);
+          const charIdx = CHARS.indexOf(baseLines[srcY]?.[srcX] || ' ');
+          row.push(CHARS[charIdx]);
         }
+        grid.push(row.join(''));
+      }
+      const result = { data: grid.join('\n') };
+      frameCache.set(key, result);
+      return result;
+    }
+    
+    function renderFrame(frameIndex) {
+      if (!frames[frameIndex]) return;
+      const dim = computeDimensions();
+      const frame = resampleFrame(frames[frameIndex], dim.width, dim.height);
+      ascii.textContent = frame.data;
+      ascii.classList.add('ready');
+    }
+    
+    async function loadFrames(jsonUrl) {
+      try {
+        loading.textContent = 'Fetching frames...';
+        const response = await fetch(jsonUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const buffer = await response.arrayBuffer();
+        loading.textContent = 'Decompressing...';
+        
+        const decompressed = pako.inflate(new Uint8Array(buffer));
+        const json = new TextDecoder().decode(decompressed);
+        frames = JSON.parse(json);
+        
+        loading.textContent = `Loaded ${frames.length} frames`;
+        renderFrame(0);
+        requestAnimationFrame(step);
+        
+        setTimeout(() => loading.remove(), 1500);
+      } catch (e) {
+        loading.innerHTML = `Error: ${e.message}`;
+        console.error(e);
+      }
+    }
+    
+    function step(timestamp) {
+      if (!playing || frames.length === 0) {
+        requestAnimationFrame(step);
+        return;
       }
       
-      renderFrame(frameIndex);
-      lastTime = timestamp;
-    }
-    requestAnimationFrame(step);
-  }
-  
-  // Controls
-  container.addEventListener('click', () => {
-    playing = !playing;
-    container.style.opacity = playing ? '1' : '0.7';
-  });
-  
-  window.addEventListener('resize', () => {
-    frameCache.clear();
-    if (frames.length > 0) renderFrame(0);
-  });
-  
-  const JSON_URL = './DSC07313_ascii-frames.json.gz';
-  loadFrames(JSON_URL);
-</script>
+      if (!lastTime) {
+        lastTime = timestamp;
+        requestAnimationFrame(step);
+        return;
+      }
+      
+      const deltaTime = timestamp - lastTime;
+      if (deltaTime >= frameDuration) {
+        videoTime += direction * (frameDuration / 1000);
+        
+        const duration = frames[frames.length-1].timestamp;
+        if (videoTime >= duration) {
+          videoTime = duration;
+          direction = -1;
+        } else if (videoTime <= 0) {
+          videoTime = 0;
+          direction = 1;
+        }
+        
+        let frameIndex = 0;
+        for (let i = 0; i < frames.length; i++) {
+          if (frames[i].timestamp <= videoTim
