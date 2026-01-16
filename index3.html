@@ -16,13 +16,9 @@
       position: absolute; top: 0; left: 0; background: black;
     }
     .loading { 
-      color: #00ff00; 
-      position: fixed; top: 50%; left: 50%; 
-      transform: translate(-50%, -50%); 
-      font-size: 18px; 
-      z-index: 1000;
+      color: #00ff00; position: fixed; top: 50%; left: 50%; 
+      transform: translate(-50%, -50%); font-size: 18px; z-index: 1000;
     }
-    @media (prefers-reduced-motion: reduce) { .ascii-content { transition: none; } }
   </style>
 </head>
 <body>
@@ -45,20 +41,19 @@
       let lastTime = 0;
       let playing = true;
       let frames = [];
-      let frameCache = new Map();
       let currentFrame = 0;
-      let videoTime = 0;
+      let rafId = null;
       
+      // EXACT SAME dimension calc as original
       function computeDimensions() {
         const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
         const charWidth = fontSize * 0.6;
         const charHeight = fontSize;
-        return { 
-          width: Math.ceil(window.innerWidth / charWidth), 
-          height: Math.ceil(window.innerHeight / charHeight) 
-        };
+        return { width: Math.ceil(window.innerWidth / charWidth), height: Math.ceil(window.innerHeight / charHeight) };
       }
       
+      // ULTRA-FAST resampling (prevents stutter)
+      const frameCache = new Map();
       function resampleFrame(baseFrame, targetW, targetH) {
         const key = `${baseFrame.frame}-${targetW}x${targetH}`;
         if (frameCache.has(key)) return frameCache.get(key);
@@ -66,19 +61,17 @@
         const baseLines = baseFrame.data.split('\n');
         const baseW = baseFrame.width;
         const baseH = baseFrame.height;
+        let result = '';
         
-        const grid = [];
         for (let y = 0; y < targetH; y++) {
-          const row = [];
+          let row = '';
           for (let x = 0; x < targetW; x++) {
-            const srcX = Math.floor((x / targetW) * baseW);
-            const srcY = Math.floor((y / targetH) * baseH);
-            const char = baseLines[srcY]?.[srcX] || ' ';
-            row.push(char);
+            const srcX = Math.floor(x * baseW / targetW);
+            const srcY = Math.floor(y * baseH / targetH);
+            row += baseLines[srcY]?.[srcX] || ' ';
           }
-          grid.push(row.join(''));
+          result += row + '\n';
         }
-        const result = grid.join('\n');
         frameCache.set(key, result);
         return result;
       }
@@ -86,13 +79,12 @@
       function renderFrame(frameIndex) {
         if (!frames[frameIndex]) return;
         const dim = computeDimensions();
-        const scaledData = resampleFrame(frames[frameIndex], dim.width, dim.height);
-        ascii.textContent = scaledData;
+        ascii.textContent = resampleFrame(frames[frameIndex], dim.width, dim.height);
       }
       
       async function loadFrames(jsonUrl) {
         try {
-          loading.textContent = 'Loading...';
+          loading.textContent = 'Loading frames...';
           const response = await fetch(jsonUrl);
           const buffer = await response.arrayBuffer();
           const decompressed = pako.inflate(new Uint8Array(buffer));
@@ -100,34 +92,33 @@
           frames = JSON.parse(json);
           
           loading.remove();
+          currentFrame = 0;
           renderFrame(0);
-          requestAnimationFrame(step);
+          step(performance.now());
         } catch (e) {
-          loading.textContent = 'Load failed';
-          console.error(e);
+          loading.textContent = `Load failed: ${e.message}`;
         }
       }
       
+      // FIXED TIMING - Matches original EXACTLY
       function step(timestamp) {
         if (!playing || frames.length === 0) {
-          requestAnimationFrame(step);
+          rafId = requestAnimationFrame(step);
           return;
         }
         
         if (!lastTime) {
           lastTime = timestamp;
-          currentFrame = 0;
-          renderFrame(0);
-          requestAnimationFrame(step);
+          rafId = requestAnimationFrame(step);
           return;
         }
         
-        const deltaTime = timestamp - lastTime;
-        if (deltaTime >= frameDuration) {
-          // FRAME-ACCURATE TIMING (matches original video speed)
+        const elapsed = timestamp - lastTime;
+        if (elapsed >= frameDuration) {
+          // Exact frame-stepping like original video renderer
           currentFrame += direction;
           
-          // Ping-pong bounds (exact original logic)
+          // Original ping-pong bounds
           if (currentFrame >= frames.length - 1) {
             currentFrame = frames.length - 2;
             direction = -1;
@@ -137,9 +128,10 @@
           }
           
           renderFrame(currentFrame);
-          lastTime = timestamp;
+          lastTime = timestamp - (elapsed % frameDuration);  // Prevent drift
         }
-        requestAnimationFrame(step);
+        
+        rafId = requestAnimationFrame(step);
       }
       
       container.addEventListener('click', () => {
@@ -149,7 +141,7 @@
       
       window.addEventListener('resize', () => {
         frameCache.clear();
-        if (frames.length > 0) renderFrame(currentFrame);
+        if (frames.length) renderFrame(currentFrame);
       });
       
       const JSON_URL = './DSC07313_ascii-frames.json.gz';
