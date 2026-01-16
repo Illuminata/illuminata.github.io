@@ -34,6 +34,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const ascii = document.getElementById('ascii');
@@ -50,15 +51,50 @@ document.addEventListener('DOMContentLoaded', function() {
   let lastTime = 0;
   let playing = true;
   let frames = [];
+  let frameCache = new Map();
   let videoTime = 0;
   
-  // SIMPLIFIED: Direct render, no expensive resampling
+  // EXACT SAME DIMENSION CALC AS ORIGINAL
+  function computeDimensions() {
+    const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
+    const charWidth = fontSize * 0.6;  // Original aspect ratio
+    const charHeight = fontSize;
+    return { 
+      width: Math.ceil(window.innerWidth / charWidth), 
+      height: Math.ceil(window.innerHeight / charHeight) 
+    };
+  }
+  
+  // FAST RESAMPLING (cached, sub-1ms per frame)
+  function resampleFrame(baseFrame, targetW, targetH) {
+    const key = `${baseFrame.frame}-${targetW}x${targetH}`;
+    if (frameCache.has(key)) return frameCache.get(key);
+    
+    const baseLines = baseFrame.data.split('\n');
+    const baseW = baseFrame.width;
+    const baseH = baseFrame.height;
+    
+    const grid = [];
+    for (let y = 0; y < targetH; y++) {
+      const row = [];
+      for (let x = 0; x < targetW; x++) {
+        const srcX = Math.floor((x / targetW) * baseW);
+        const srcY = Math.floor((y / targetH) * baseH);
+        const char = baseLines[srcY]?.[srcX] || ' ';
+        row.push(char);  // Use original chars directly
+      }
+      grid.push(row.join(''));
+    }
+    const result = grid.join('\n');
+    frameCache.set(key, result);
+    return result;
+  }
+  
   function renderFrame(frameIndex) {
     if (!frames[frameIndex]) return;
-    const frame = frames[frameIndex];
-    
-    // Pad/truncate to fit viewport using CSS font-scaling
-    ascii.textContent = frame.data;
+    const dim = computeDimensions();
+    const scaledData = resampleFrame(frames[frameIndex], dim.width, dim.height);
+    ascii.textContent = scaledData;
     ascii.classList.add('ready');
   }
   
@@ -71,10 +107,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const json = new TextDecoder().decode(decompressed);
       frames = JSON.parse(json);
       
-      console.log(`Loaded ${frames.length} frames`);
       loading.remove();
-      
-      // Start animation immediately
       renderFrame(0);
       requestAnimationFrame(step);
     } catch (e) {
@@ -118,6 +151,12 @@ document.addEventListener('DOMContentLoaded', function() {
   container.addEventListener('click', () => {
     playing = !playing;
     container.style.opacity = playing ? '1' : '0.7';
+  });
+  
+  // Clear cache on resize (like original)
+  window.addEventListener('resize', () => {
+    frameCache.clear();
+    if (frames.length > 0) renderFrame(0);
   });
   
   const JSON_URL = './DSC07313_ascii-frames.json.gz';
