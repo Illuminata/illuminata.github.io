@@ -105,32 +105,46 @@
         console.error(e);
       }
     }
+    let videoTime = 0;  // Add this global variable with other globals
+
+function step(timestamp) {
+  if (!playing || frames.length === 0) {
+    requestAnimationFrame(step);
+    return;
+  }
+  
+  if (!lastTime) lastTime = timestamp;
+  const delta = (timestamp - lastTime) / 1000;  // Convert to seconds
+  
+  if (delta >= frameDuration / 1000) {  // frameDuration was in ms, convert to s
+    // Update video time with direction (ping-pong like original)
+    videoTime += direction * (frameDuration / 1000);
     
-    function step(timestamp) {
-      if (!playing || frames.length === 0) {
-        requestAnimationFrame(step);
-        return;
-      }
-      
-      if (!lastTime) lastTime = timestamp;
-      const delta = timestamp - lastTime;
-      
-      if (delta >= frameDuration) {
-        currentFrame += direction;
-        if (currentFrame >= frames.length - 1) {
-          currentFrame = frames.length - 2;
-          direction = -1;
-        } else if (currentFrame <= 0) {
-          currentFrame = 1;
-          direction = 1;
-        }
-        
-        renderFrame(currentFrame);
-        lastTime = timestamp;
-      }
-      requestAnimationFrame(step);
+    // Ping-pong bounds
+    if (videoTime >= frames[frames.length-1].timestamp) {
+      videoTime = frames[frames.length-1].timestamp;
+      direction = -1;
+    } else if (videoTime <= 0) {
+      videoTime = 0;
+      direction = 1;
     }
     
+    // Find closest frame by timestamp
+    let frameIndex = 0;
+    for (let i = 0; i < frames.length; i++) {
+      if (frames[i].timestamp <= videoTime) {
+        frameIndex = i;
+      } else {
+        break;
+      }
+    }
+    
+    renderFrame(frameIndex);
+    lastTime = timestamp;
+  }
+  requestAnimationFrame(step);
+}
+   
     // Controls
     container.addEventListener('click', () => {
       playing = !playing;
