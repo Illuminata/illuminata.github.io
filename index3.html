@@ -50,27 +50,41 @@
       return result;
     }
     
-    function renderFrame(frameIndex) {
-      if (!frames[frameIndex]) return;
-      const dim = computeDimensions();
-      const frame = resampleFrame(frames[frameIndex], dim.width, dim.height);
-      ascii.textContent = frame.data;
-      ascii.classList.add('ready');
-    }
+function renderFrame(frameIndex) {
+  if (!frames[frameIndex]) return;
+  const dim = computeDimensions();
+  const frame = resampleFrame(frames[frameIndex], dim.width, dim.height);
+  ascii.textContent = frame.data;
+  ascii.style.opacity = '1';  // Force visible immediately
+}
     
-    async function loadFrames(jsonUrl) {
-      try {
-        loading.textContent = 'Fetching frames...';
-        const response = await fetch(jsonUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const buffer = await response.arrayBuffer();
-        loading.textContent = 'Decompressing...';
-        
-        const decompressed = pako.inflate(new Uint8Array(buffer));
-        const json = new TextDecoder().decode(decompressed);
-        frames = JSON.parse(json);
-        
+async function loadFrames(jsonUrl) {
+  try {
+    loading.textContent = 'Fetching frames...';
+    const response = await fetch(jsonUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const buffer = await response.arrayBuffer();
+    loading.textContent = 'Decompressing...';
+    
+    const decompressed = pako.inflate(new Uint8Array(buffer));
+    const json = new TextDecoder().decode(decompressed);
+    frames = JSON.parse(json);
+    
+    loading.textContent = `Loaded ${frames.length} frames - Rendering...`;
+    
+    // Force first frame visible
+    renderFrame(0);
+    ascii.style.opacity = '1';
+    
+    setTimeout(() => loading.remove(), 1000);
+    requestAnimationFrame(step);
+  } catch (e) {
+    loading.innerHTML = `Error: ${e.message}<br>Check console for details`;
+    console.error(e);
+  }
+}
+    
         loading.textContent = `Loaded ${frames.length} frames`;
         renderFrame(0);
         requestAnimationFrame(step);
