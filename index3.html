@@ -3,6 +3,10 @@
   // Wait for DOM to load
   document.addEventListener('DOMContentLoaded', async function() {
     const ascii = document.getElementById('ascii');
+    console.log('ascii:', ascii);
+  console.log('container:', container);
+  ascii.style.background = 'red';  // Should show red background
+  ascii.textContent = 'TEST';
     const loading = document.getElementById('loading');
     const container = document.getElementById('asciiContainer');
     
