@@ -33,158 +33,96 @@
   <div class="loading" id="loading">Loading...</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const ascii = document.getElementById('ascii');
-      const loading = document.getElementById('loading');
-      const container = document.getElementById('asciiContainer');
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const ascii = document.getElementById('ascii');
+  const loading = document.getElementById('loading');
+  const container = document.getElementById('asciiContainer');
+  
+  ascii.style.opacity = '1';
+  ascii.style.background = 'black';
+  
+  const CHARS = ' .:-=+*#%@';
+  let direction = 1;
+  const FPS = 30;
+  const frameDuration = 1000 / FPS;
+  let lastTime = 0;
+  let playing = true;
+  let frames = [];
+  let videoTime = 0;
+  
+  // SIMPLIFIED: Direct render, no expensive resampling
+  function renderFrame(frameIndex) {
+    if (!frames[frameIndex]) return;
+    const frame = frames[frameIndex];
+    
+    // Pad/truncate to fit viewport using CSS font-scaling
+    ascii.textContent = frame.data;
+    ascii.classList.add('ready');
+  }
+  
+  async function loadFrames(jsonUrl) {
+    try {
+      loading.textContent = 'Loading...';
+      const response = await fetch(jsonUrl);
+      const buffer = await response.arrayBuffer();
+      const decompressed = pako.inflate(new Uint8Array(buffer));
+      const json = new TextDecoder().decode(decompressed);
+      frames = JSON.parse(json);
       
-      // DEBUG: Verify DOM works
-      console.log('Elements loaded:', {ascii, container, loading});
-      ascii.style.background = 'red';
-      ascii.textContent = 'DOM OK - WAITING FOR FRAMES';
+      console.log(`Loaded ${frames.length} frames`);
+      loading.remove();
       
-      const CHARS = ' .:-=+*#%@';
-      let direction = 1;
-      const FPS = 30;
-      const frameDuration = 1000 / FPS;
-      let lastTime = 0;
-      let playing = true;
-      let frames = [];
-      let frameCache = new Map();
-      let videoTime = 0;
+      // Start animation immediately
+      renderFrame(0);
+      requestAnimationFrame(step);
+    } catch (e) {
+      loading.textContent = 'Load failed';
+      console.error(e);
+    }
+  }
+  
+  function step(timestamp) {
+    if (!playing || frames.length === 0) {
+      requestAnimationFrame(step);
+      return;
+    }
+    
+    if (!lastTime) {
+      lastTime = timestamp;
+      requestAnimationFrame(step);
+      return;
+    }
+    
+    const deltaTime = timestamp - lastTime;
+    if (deltaTime >= frameDuration) {
+      videoTime += direction * (frameDuration / 1000);
       
-      function computeDimensions() {
-        const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
-        const charWidth = fontSize * 0.6;
-        const charHeight = fontSize;
-        return { 
-          width: Math.ceil(window.innerWidth / charWidth), 
-          height: Math.ceil(window.innerHeight / charHeight) 
-        };
+      const duration = frames[frames.length-1]?.timestamp || 10;
+      if (videoTime >= duration) {
+        videoTime = duration;
+        direction = -1;
+      } else if (videoTime <= 0) {
+        videoTime = 0;
+        direction = 1;
       }
       
-      function resampleFrame(baseFrame, targetW, targetH) {
-        const key = `${targetW}x${targetH}`;
-        if (frameCache.has(key)) return frameCache.get(key);
-        
-        const baseLines = baseFrame.data.split('\n');
-        const baseW = baseFrame.width || 120;
-        const baseH = baseFrame.height || 80;
-        
-        const grid = [];
-        for (let y = 0; y < targetH; y++) {
-          const row = [];
-          for (let x = 0; x < targetW; x++) {
-            const srcX = Math.floor(x * baseW / targetW);
-            const srcY = Math.floor(y * baseH / targetH);
-            const char = baseLines[srcY]?.[srcX] || ' ';
-            const charIdx = CHARS.indexOf(char);
-            row.push(CHARS[charIdx >= 0 ? charIdx : 0]);
-          }
-          grid.push(row.join(''));
-        }
-        const result = { data: grid.join('\n') };
-        frameCache.set(key, result);
-        return result;
-      }
-      
-      function renderFrame(frameIndex) {
-        console.log('renderFrame called:', frameIndex, frames[frameIndex]);
-        if (!frames[frameIndex]) {
-          console.error('Frame missing:', frameIndex);
-          return;
-        }
-        const dim = computeDimensions();
-        const frame = resampleFrame(frames[frameIndex], dim.width, dim.height);
-        ascii.textContent = frame.data;
-        ascii.style.opacity = '1';
-        ascii.style.background = 'black';
-        ascii.classList.add('ready');
-      }
-      
-      async function loadFrames(jsonUrl) {
-        try {
-          loading.textContent = 'Fetching JSON...';
-          const response = await fetch(jsonUrl);
-          console.log('Fetch response:', response.status, response.statusText);
-          
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          
-          const buffer = await response.arrayBuffer();
-          loading.textContent = 'Decompressing...';
-          
-          const decompressed = pako.inflate(new Uint8Array(buffer));
-          const json = new TextDecoder().decode(decompressed);
-          frames = JSON.parse(json);
-          
-          console.log('SUCCESS - Frames loaded:', frames.length);
-          console.log('First frame:', frames[0]);
-          
-          loading.textContent = `✓ ${frames.length} frames loaded`;
-          renderFrame(0);
-          
-          setTimeout(() => {
-            loading.style.display = 'none';
-            requestAnimationFrame(step);
-          }, 1500);
-          
-        } catch (e) {
-          console.error('LOAD ERROR:', e);
-          loading.innerHTML = `ERROR: ${e.message}<br>Check Network tab & Console`;
-        }
-      }
-      
-      function step(timestamp) {
-        if (!playing || frames.length === 0) {
-          requestAnimationFrame(step);
-          return;
-        }
-        
-        if (!lastTime) {
-          lastTime = timestamp;
-          requestAnimationFrame(step);
-          return;
-        }
-        
-        const deltaTime = timestamp - lastTime;
-        if (deltaTime >= frameDuration) {
-          videoTime += direction * (frameDuration / 1000);
-          
-          const duration = frames[frames.length-1]?.timestamp || 10;
-          if (videoTime >= duration) {
-            videoTime = duration;
-            direction = -1;
-          } else if (videoTime <= 0) {
-            videoTime = 0;
-            direction = 1;
-          }
-          
-          let frameIndex = Math.floor(videoTime * FPS);
-          frameIndex = Math.max(0, Math.min(frames.length - 1, frameIndex));
-          
-          renderFrame(frameIndex);
-          lastTime = timestamp;
-        }
-        requestAnimationFrame(step);
-      }
-      
-      // Controls
-      container.addEventListener('click', () => {
-        playing = !playing;
-        console.log('Playback toggled:', playing);
-        container.style.opacity = playing ? '1' : '0.7';
-      });
-      
-      window.addEventListener('resize', () => {
-        frameCache.clear();
-        if (frames.length > 0) renderFrame(0);
-      });
-      
-      // LOAD YOUR JSON FILE HERE
-      const JSON_URL = './DSC07313_ascii-frames.json.gz';
-      loadFrames(JSON_URL);
-    });
-  </script>
+      const frameIndex = Math.floor(videoTime * FPS);
+      renderFrame(Math.max(0, Math.min(frames.length - 1, frameIndex)));
+      lastTime = timestamp;
+    }
+    requestAnimationFrame(step);
+  }
+  
+  container.addEventListener('click', () => {
+    playing = !playing;
+    container.style.opacity = playing ? '1' : '0.7';
+  });
+  
+  const JSON_URL = './DSC07313_ascii-frames.json.gz';
+  loadFrames(JSON_URL);
+});
+</script>
 </body>
 </html>
