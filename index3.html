@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>d҉o҉o҉m҉</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+    .ascii-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; cursor: pointer; }
+    .ascii-content {
+      color: #00ff00; white-space: pre; font-family: inherit;
+      font-size: clamp(6px, 1vmin, 12px); line-height: 1;
+      width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 0.2s ease;
+      text-align: left; letter-spacing: 0; margin: 0; padding: 0;
+      position: absolute; top: 0; left: 0;
+    }
+    .ascii-content.ready { opacity: 1; }
+    .loading { color: #00ff00; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    @media (prefers-reduced-motion: reduce) { .ascii-content { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="ascii-container" id="asciiContainer">
+    <div class="ascii-content" id="ascii"></div>
+  </div>
+  <div class="loading" id="loading">doom inbound</div>
+
+  <script>
+    const ascii = document.getElementById('ascii');
+    const loading = document.getElementById('loading');
+    const container = document.getElementById('asciiContainer');
+    
+    const CHARS = ' .:-=+*#%@';
+    
+    let direction = 1;
+    const FPS = 30;
+    let frameDuration = 1 / FPS * 1000;
+    let lastTime = 0;
+    let playing = true;
+    let frames = [];
+    let frameCache = new Map(); // Cache resampled frames by resolution
+    
+    function computeDimensions() {
+      const fontSize = parseFloat(getComputedStyle(ascii).fontSize) || 8;
+      const charWidth = fontSize * 0.6;
+      const charHeight = fontSize;
+      const w = Math.ceil(window.innerWidth / charWidth);
+      const h = Math.ceil(window.innerHeight / charHeight);
+      return { width: w, height: h };
+    }
+    
+    function resampleFrame(baseFrame, targetW, targetH) {
+      const key = `${targetW}x${targetH}`;
+      if (frameCache.has(key)) return frameCache.get(key);
+      
+      const baseLines = baseFrame.data.split('\n');
+      const baseW = baseFrame.width;
+      const baseH = baseFrame.height;
+      
+      const grid = [];
+      for (let y = 0; y < targetH; y++) {
+        const row = [];
+        for (let x = 0; x < targetW; x++) {
+          // Sample from base frame (bilinear-like)
+          const srcX = Math.floor(x * baseW / targetW);
+          const srcY = Math.floor(y * baseH / targetH);
+          const charIdx = CHARS.indexOf(baseLines[srcY]?.[srcX] || ' ');
+          row.push(CHARS[charIdx]);
+        }
+        grid.push(row.join(''));
+      }
+      const result = { data: grid.join('\n'), width: targetW, height: targetH };
+      frameCache.set(key, result);
+      return result;
+    }
+    
+    function renderFrame(frameIndex) {
+      if (!frames[frameIndex]) return;
+      const dim = computeDimensions();
+      const frame = resampleFrame(frames[frameIndex], dim.width, dim.height);
+      ascii.textContent = frame.data;
+      ascii.classList.add('ready');
+    }
+    
+    function step(timestamp) {
+      if (!playing || frames.length === 0) {
+        requestAnimationFrame(step);
+        return;
+      }
+      
+      if (!lastTime) lastTime = timestamp;
+      const delta = timestamp - lastTime;
+      
+      if (delta >= frameDuration) {
+        let frameIndex = Math.floor((videoTime / frameDuration) * direction);
+        frameIndex = Math.max(0, Math.min(frames.length - 1, frameIndex));
+        
+        renderFrame(frameIndex);
+        lastTime = timestamp;
+      }
+      requestAnimationFrame(step);
+    }
+    
+    async function loadFrames(jsonUrl) {
+      try {
+        const response = await fetch(jsonUrl);
+        const buffer = await response.arrayBuffer();
+        const gunzip = new Zlib.Gunzip(new Uint8Array(buffer));
+        const decompressed = gunzip.decompress();
+        const json = new TextDecoder().decode(decompressed);
+        frames = JSON.parse(json);
+        loading.textContent = `Loaded ${frames.length} frames`;
+        
+        // Initial render
+        renderFrame(0);
+        requestAnimationFrame(step);
+        
+        setTimeout(() => loading.style.opacity = '0', 1000);
+      } catch (e) {
+        loading.textContent = 'Failed to load frames';
+        console.error(e);
+      }
+    }
+    
+    container.addEventListener('click', () => {
+      playing = !playing;
+      container.style.opacity = playing ? '1' : '0.7';
+    });
+    
+    window.addEventListener('resize', () => {
+      frameCache.clear(); // Clear cache on resize
+      if (playing && frames.length > 0) {
+        renderFrame(Math.floor(videoTime / frameDuration));
+      }
+    });
+    
+    const JSON_URL = 'DSC07313_ascii-frames.json.gz';
+    loadFrames(JSON_URL);
+  </script>
+  <!-- pako for gzip decompression -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+</body>
+</html>
